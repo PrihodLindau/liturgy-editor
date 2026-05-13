@@ -1,6 +1,7 @@
 import streamlit as st
 from docx import Document
 import io
+import re  # ← ЭТО БЫЛО ПРОПУЩЕНО
 
 st.title("Литургический редактор - Шаг 1")
 
