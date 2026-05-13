@@ -1,89 +1,45 @@
 import streamlit as st
 from docx import Document
 import io
-import re
 
-st.set_page_config(page_title="Литургический редактор", layout="wide")
-st.title("📖 Литургический редактор")
+st.title("Литургический редактор - Шаг 1")
 
-def process_document(doc):
-    """Полная обработка документа"""
-    
-    # 1. Обрезаем до Божественной литургии
-    for i, para in enumerate(doc.paragraphs):
-        if "божественная литургия" in para.text.lower():
-            for j in range(i-1, -1, -1):
-                p = doc.paragraphs[j]
-                if p._element.getparent() is not None:
-                    p._element.getparent().remove(p._element)
-            break
-    
-    # 2. Собираем стихиры из утрени
-    in_matins = False
-    stichera = []
-    
-    for para in doc.paragraphs:
-        text = para.text.lower()
-        
-        if "утреня" in text:
-            in_matins = True
-            continue
-        
-        if in_matins and "канон" in text:
-            in_matins = False
-        
-        if in_matins and "стихир" in text:
-            if not any(x in text for x in ["воскресн", "воскресная"]):
-                stichera.append(para)
-    
-    # 3. Оставляем нужные разделы
-    keep_sections = ["тропари", "кондаки", "прокимны", "аллилуиа", "причастный"]
-    keep = False
-    to_remove = []
-    
-    for para in doc.paragraphs:
-        text = para.text.lower()
-        
-        if any(s in text for s in keep_sections):
-            keep = True
-        
-        if any(s in text for s in ["апостол", "евангелие", "отпуст"]):
-            keep = False
-        
-        if not keep and text.strip():
-            to_remove.append(para)
-    
-    for para in to_remove:
-        if para._element.getparent() is not None:
-            para._element.getparent().remove(para._element)
-    
-    # 4. Вставляем запричастные
-    if stichera:
-        for i, para in enumerate(doc.paragraphs):
-            if "причастный" in para.text.lower():
-                # Добавляем заголовок
-                title = doc.paragraphs[i].insert_paragraph_before()
-                title.add_run("ЗАПРИЧАСТНЫЕ (стихиры праздника)").bold = True
-                
-                # Добавляем стихиры
-                for stih in stichera:
-                    new_p = doc.paragraphs[i+1].insert_paragraph_before()
-                    new_p.text = stih.text
-                break
-    
-    return doc
-
-uploaded = st.file_uploader("Загрузите DOCX файл", type=["docx"])
+uploaded = st.file_uploader("Загрузите DOCX", type=["docx"])
 
 if uploaded:
     doc = Document(uploaded)
     
-    with st.spinner("Обработка..."):
-        doc = process_document(doc)
+    # Находим заголовок с датой и "Божественную литургию"
+    date_index = None
+    liturgy_index = None
+    
+    for i, para in enumerate(doc.paragraphs):
+        text = para.text.lower()
+        # Ищем дату (цифры и точки, например "23.02.2025" или "25 марта")
+        if re.search(r'\d{1,2}[\.\s]\d{1,2}[\.\s]\d{2,4}', text) or any(month in text for month in ['января','февраля','марта','апреля']):
+            if date_index is None:
+                date_index = i
+        if "божественная литургия" in text:
+            liturgy_index = i
+            break
+    
+    if date_index is not None and liturgy_index is not None and date_index < liturgy_index:
+        # Вырезаем блок между датой и литургией
+        block_to_move = []
+        for i in range(date_index, liturgy_index):
+            block_to_move.append(doc.paragraphs[i].text)
+            # Удаляем оригинал
+            p = doc.paragraphs[i]
+            if p._element.getparent() is not None:
+                p._element.getparent().remove(p._element)
+        
+        # Вставляем в конец документа
+        for text in block_to_move:
+            doc.add_paragraph(text)
     
     output = io.BytesIO()
     doc.save(output)
     output.seek(0)
     
-    st.success("✅ Обработка завершена!")
-    st.download_button("📥 Скачать", output, "processed.docx", use_container_width=True)
+    st.success("Шаг 1 выполнен: блок перенесён вниз")
+    st.download_button("Скачать", output, "step1.docx")
